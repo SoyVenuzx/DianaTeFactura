@@ -5,10 +5,10 @@ CREATE DATABASE DianaTeFactura;
 -- Productos
 CREATE TABLE productos (
 	IDProducto INT PRIMARY KEY AUTO_INCREMENT,
-	NombreProducto VARCHAR(150) NOT NULL,
-	Precio DECIMAL(10, 2) NOT NULL CHECK (Precio >= 0),
-	CantidadInventario INT NOT NULL CHECK (CantidadInventario >= 0),
-	UnidadMedida VARCHAR(20)
+	nombreProducto VARCHAR(150) NOT NULL,
+	precio DECIMAL(10, 2) NOT NULL CHECK (Precio >= 0),
+	cantidadInventario INT NOT NULL CHECK (CantidadInventario >= 0),
+	unidadMedida VARCHAR(20)
 );
 
 CREATE TABLE tipo_productos (
@@ -19,18 +19,27 @@ CREATE TABLE tipo_productos (
 );
 
 -- Contacto
-CREATE TABLE contactos (
+CREATE TABLE contactosProveedor (
 	idContacto int PRIMARY KEY AUTO_INCREMENT,
 	tipoContacto varchar(50) NOT NULL,
-	valor varchar(100) NOT NULL
+	valor varchar(100) NOT NULL,
+	idProveedor INT,
+	FOREIGN KEY (idProveedor) REFERENCES proveedores(idProveedor)
 );
+
+CREATE TABLE contactosCliente (
+	idContacto INT PRIMARY KEY AUTO_INCREMENT
+	tipoContacto VARCHAR(50) NOT NULL,
+	valor VARCHAR(100) NOT NULL,
+	idCliente INT,
+	FOREIGN KEY (idCliente) REFERENCES clientes(idCliente)
+)
 
 -- Clientes
 CREATE TABLE clientes (
 	idCliente int PRIMARY KEY AUTO_INCREMENT,
 	nombreCliente varchar(50) NOT NULL,
 	apellidoCliente varchar(50) NOT NULL,
-	idContacto int,
 	FOREIGN KEY (idContacto) REFERENCES contactos(idContacto)
 );
 
@@ -56,20 +65,19 @@ CREATE TABLE tipo_ventas (
 CREATE TABLE proveedores (
 	idProveedor int PRIMARY KEY AUTO_INCREMENT,
 	nombreProveedor varchar(50) NOT NULL,
-	idContacto int,
 	FOREIGN KEY (idContacto) REFERENCES contactos(idContacto)
 );
 
 -- Mapeo contactos
-CREATE TABLE mapeo_contacto (
-	idMapeo int PRIMARY KEY AUTO_INCREMENT,
-	idContacto int NOT NULL,
-	idProveedor int,
-	idCliente int,
-	FOREIGN KEY (idContacto) REFERENCES contactos(idContacto),
-	FOREIGN KEY (idProveedor) REFERENCES proveedores(idProveedor),
-	FOREIGN KEY (idCliente) REFERENCES clientes(idCliente)
-);
+-- CREATE TABLE mapeo_contacto (
+-- 	idMapeo int PRIMARY KEY AUTO_INCREMENT,
+-- 	idContacto int NOT NULL,
+-- 	idProveedor INT DEFAULT 0,
+-- 	idCliente INT DEFAULT 0,
+-- 	FOREIGN KEY (idContacto) REFERENCES contactos(idContacto),
+-- 	FOREIGN KEY (idProveedor) REFERENCES proveedores(idProveedor),
+-- 	FOREIGN KEY (idCliente) REFERENCES clientes(idCliente)
+-- );
 
 -- Compras 
 CREATE TABLE compras (
@@ -148,7 +156,6 @@ CREATE TABLE informacion_usuario (
 );
 
 ------------------------------------------------------------------------------
-
 -- Ejemplos para crear proveedores/clientes/productos:
 -- Insertando contacto
 INSERT INTO
@@ -177,8 +184,8 @@ VALUES
 	('Email', 'cliente4@ejemplo.com');
 
 -- Insertar un cliente y obtener su id
-INSERT INTO
-	clientes (nombreCliente, apellidoCliente, idContacto)
+INSERT
+	INT clientes (nombreCliente, apellidoCliente, idContacto)
 VALUES
 	('Antonio', 'Rodriguez', LAST_INSERT_ID());
 
@@ -192,10 +199,10 @@ VALUES
 -- Insertando productos
 INSERT INTO
 	productos (
-		NombreProducto,
-		Precio,
-		CantidadInventario,
-		UnidadMedida
+		nombreProducto,
+		precio,
+		cantidadInventario,
+		unidadMedida
 	)
 VALUES
 	('Producto 1', 10.50, 100, 'pieza'),

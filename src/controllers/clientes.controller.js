@@ -2,10 +2,48 @@ import { pool } from '../db.js'
 
 export const getClients = async (req, res) => {
   try {
-    const [result] = await pool.query(
-      'SELECT c.idCliente, c.nombreCliente, c.apellidoCliente, co.tipoContacto, co.valor FROM clientes c INNER JOIN contactos co ON c.idContacto = co.idContacto'
-    )
-    res.json(result)
+    const query = `
+      SELECT 
+        cl.idProveedor,
+        cl.nombreProveedor,
+        c.idContacto,
+        c.tipoContacto,
+        c.valor
+      FROM 
+        clientes cl
+        INNER JOIN contactosCliente c ON cl.idContacto = c.idContacto
+    `
+
+    const [result] = await pool.query(query)
+
+    const clientes = {}
+    result.forEach(row => {
+      const {
+        idCliente,
+        nombreCliente,
+        apellidoCliente,
+        idContacto,
+        tipoContacto,
+        valor
+      } = row
+
+      if (!clientes[idCliente]) {
+        clientes[idCliente] = {
+          idCliente,
+          nombreCliente,
+          apellidoCliente,
+          contactos: []
+        }
+      }
+
+      clientes[idCliente].contactos.push({
+        idContacto,
+        tipoContacto,
+        valor
+      })
+
+      res.json(Object.values(clientes))
+    })
   } catch (error) {
     return res.status(500).json({ message: 'Internal Server Error' })
   }
@@ -13,64 +51,171 @@ export const getClients = async (req, res) => {
 
 export const getClient = async (req, res) => {
   try {
-    const { id } = req.params
+    const { idCliente } = req.params
 
-    const [result] = await pool.query(
-      'SELECT c.idCliente, c.nombreCliente, c.apellidoCliente, co.tipoContacto, co.valor FROM clientes c INNER JOIN contactos co ON c.idContacto = co.idContacto WHERE c.idCliente = ?',
-      [id]
-    )
+    const query = `
+      SELECT
+        cl.idCliente,
+        cl.nombreCliente,
+        cl.apellidoCliente,
+        c.idContacto,
+        c.tipoContacto,
+        c.valor
+      FROM
+        clientes cl
+        INNER JOIN contactosCliente c ON cl.idContacto = c.idContacto
+      WHERE
+        cl.idCliente = ?
+    `
 
-    if (result.length === 0)
-      return res.status(404).json({ message: 'Cliente no encontrado' })
+    const [result] = await pool.query(query, [idCliente])
 
-    res.json(result[0])
+    const client = {
+      idCliente: result[0].idCliente,
+      nombreCliente: result[0].nombreCliente,
+      apellidoCliente: result[0].apellidoCliente,
+      contactos: result.map(contacto => ({
+        idContacto: contacto.idContacto,
+        tipoContacto: contacto.tipoContacto,
+        valor: contacto.valor
+      }))
+    }
+
+    res.json(client)
   } catch (error) {
     return res.status(500).json({ message: 'Internal Server Error' })
   }
 }
 
-// Ejemplo creacion proveedor/cliente con tabla contactos
+export const createClient = async (req, res) => {
+  try {
+    const { nombreCliente, apellidoCliente, contactos } = req.body
 
-// try {
-//     const { nombreProveedor, contactos } = req.body; // Se espera recibir el nombre del proveedor y una lista de contactos
+    let idCliente = ''
 
-//     const result = await db.query('INSERT INTO proveedores (nombreProveedor) VALUES (?)', [nombreProveedor]);
-//     const idProveedor = result.insertId;
+    try {
+      const queryCreateCliente = `
+        INSERT INTO clientes (nombreCliente, apellidoCliente) VALUES (?, ?)
+      `
 
-//     // Insertamos los contactos
-//     for (const contacto of contactos) {
-//       const { descripcion, valor } = contacto;
-//       const result = await db.query('INSERT INTO contacto (descripcion, valor) VALUES (?, ?)', [descripcion, valor]);
-//       const idContacto = result.insertId;
+      const [result] = await pool.query(queryCreateCliente, [
+        nombreCliente,
+        apellidoCliente
+      ])
 
-//       // Insertamos el mapeo a la tabla de mapeo_contacto
-//       await db.query('INSERT INTO mapeo_contacto (idProveedor, idContacto) VALUES (?, ?)', [idProveedor, idContacto]);
-//     }
+      idCliente = result.insertId
+    } catch (error) {
+      return res.status(500).json({ message: 'Error al crear el cliente' })
+    }
 
-//     res.status(201).json({ message: 'Proveedor creado exitosamente' });
-//   } catch (error) {
-//     console.log(error);
-//     res.status(500).json({ message: 'Hubo un error al crear el proveedor' });
-//   }
+    try {
+      const insertContactQuery =
+        'INSERT INTO contactosCliente (tipoContacto, valor, idCliente) VALUES (?, ?)'
 
-// try {
-//   const { nombreCliente, apellidoCliente, contactos } = req.body; // Se espera recibir el nombre y apellido del cliente y una lista de contactos
+      const contactoValues = contactos.map(contacto => [
+        contacto.tipoContacto,
+        contacto.valor,
+        idCliente
+      ])
 
-//   const result = await db.query('INSERT INTO clientes (nombreCliente, apellidoCliente) VALUES (?, ?)', [nombreCliente, apellidoCliente]);
-//   const idCliente = result.insertId;
+      await pool.query(insertContactQuery, [contactoValues])
+    } catch (error) {
+      return res.status(500).json({ message: 'Error al crear el contacto' })
+    }
+  } catch (error) {
+    return res.status(500).json({ message: 'Internal Server Error' })
+  }
+}
 
-//   // Insertamos los contactos
-//   for (const contacto of contactos) {
-//     const { descripcion, valor } = contacto;
-//     const result = await db.query('INSERT INTO contacto (descripcion, valor) VALUES (?, ?)', [descripcion, valor]);
-//     const idContacto = result.insertId;
+export const editClient = async (req, res) => {
+  try {
+    const { idCliente } = req.params
+    const { nombreCliente, apellidoCliente, contactos } = req.body
 
-//     // Insertamos el mapeo a la tabla de mapeo_contacto
-//     await db.query('INSERT INTO mapeo_contacto (idCliente, idContacto) VALUES (?, ?)', [idCliente, idContacto]);
-//   }
+    const queryUpdateCliente = `
+      UPDATE clientes
+      SET nombreCliente = ?, apellidoCliente = ?
+      WHERE idCliente = ?
+    `
 
-//   res.status(201).json({ message: 'Cliente creado exitosamente' });
-// } catch (error) {
-//   console.log(error);
-//   res.status(500).json({ message: 'Hubo un error al crear el cliente' });
-// }
+    await pool.query(queryUpdateCliente, [
+      nombreCliente,
+      apellidoCliente,
+      idCliente
+    ])
+
+    const queryGetContactos = `
+      SELECT idContacto
+      FROM contactosCliente
+      WHERE idCliente = ?
+    `
+
+    const [existingContactos] = await pool.query(queryGetContactos, [idCliente])
+
+    const existingContactosSet = new Set(
+      existingContactos.map(({ idContacto }) => idContacto)
+    )
+
+    const contactosToDelete = existingContactosSet.filter(({ idContacto }) => {
+      return !contactos.some(contacto => contacto.idContacto === idContacto)
+    })
+
+    if (contactosToDelete.length > 0) {
+      const queryDeleteContactos = `
+        DELETE FROM contactosCliente
+        WHERE idContacto IN (${contactosToDelete
+          .map(({ idContacto }) => idContacto)
+          .join(',')})
+      `
+
+      console.log({ queryDeleteContactos })
+
+      await pool.query(queryDeleteContactos)
+    }
+
+    const queryUpsertContactos = `
+      INSERT INTO contactosCliente (tipoContacto, valor, idCliente)
+      VALUES (?, ?, ?)
+      ON DUPLICATE KEY UPDATE tipoContacto = VALUES(tipoContacto), valor = VALUES(valor)
+    `
+
+    const contactosValues = contactos.map(
+      ({ idContacto, tipoContacto, valor }) => [
+        idContacto,
+        tipoContacto,
+        valor,
+        idCliente
+      ]
+    )
+
+    await pool.query(queryUpsertContactos, contactosValues)
+
+    res.json({ message: 'Cliente actualizado exitosamente' })
+  } catch (error) {
+    return res.status(500).json({ message: 'Internal Server Error' })
+  }
+}
+
+export const deleteClient = async (req, res) => {
+  try {
+    const { idCliente } = req.params
+
+    const queryDeleteCliente = `
+      DELETE FROM clientes
+      WHERE idCliente = ?
+    `
+
+    await pool.query(queryDeleteCliente, [idCliente])
+
+    const queryDeleteContactos = `
+      DELETE FROM contactosCliente
+      WHERE idCliente = ?
+    `
+
+    await pool.query(queryDeleteContactos, [idCliente])
+
+    res.json({ message: 'Cliente eliminado exitosamente' })
+  } catch (error) {
+    return res.status(500).json({ message: 'Internal Server Error' })
+  }
+}
