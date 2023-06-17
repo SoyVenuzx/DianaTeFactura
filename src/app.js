@@ -4,6 +4,8 @@ import './config.js'
 import clientesRoutes from './routes/clientes.routes.js'
 import proveedoresRoutes from './routes/proveedores.routes.js'
 import productosRoutes from './routes/productos.routes.js'
+import ventasRoutes from './routes/ventas.routes.js'
+import comprasRoutes from './routes/compras.routes.js'
 
 const app = express()
 
@@ -14,6 +16,8 @@ app.use(express.json())
 app.use('/api', clientesRoutes)
 app.use('/api', proveedoresRoutes)
 app.use('/api', productosRoutes)
+app.use('/api', ventasRoutes)
+app.use('/api', comprasRoutes)
 
 // 404
 app.use((req, res) => {

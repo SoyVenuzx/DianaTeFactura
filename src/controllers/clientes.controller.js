@@ -1,23 +1,29 @@
+import { formatName } from '../../utils/formatName.utils.js'
 import { pool } from '../db.js'
 
 export const getClients = async (req, res) => {
   try {
     const query = `
       SELECT 
-        cl.idProveedor,
-        cl.nombreProveedor,
+        cl.idCliente,
+        cl.nombreCliente,
+        cl.apellidoCliente,
         c.idContacto,
         c.tipoContacto,
         c.valor
       FROM 
         clientes cl
-        INNER JOIN contactosCliente c ON cl.idContacto = c.idContacto
+        LEFT JOIN contactosCliente c ON cl.idCliente = c.idCliente
+        ORDER BY cl.idCliente
     `
 
-    const [result] = await pool.query(query)
+    const [results] = await pool.query(query)
 
-    const clientes = {}
-    result.forEach(row => {
+    const clients = []
+    let currentClienteId = null
+    let currentCliente = null
+
+    results.forEach(row => {
       const {
         idCliente,
         nombreCliente,
@@ -27,23 +33,30 @@ export const getClients = async (req, res) => {
         valor
       } = row
 
-      if (!clientes[idCliente]) {
-        clientes[idCliente] = {
+      if (idCliente !== currentClienteId) {
+        currentClienteId = idCliente
+
+        currentCliente = {
           idCliente,
-          nombreCliente,
-          apellidoCliente,
+          nombreCliente: formatName(nombreCliente, apellidoCliente),
           contactos: []
         }
+
+        clients.push(currentCliente)
       }
 
-      clientes[idCliente].contactos.push({
-        idContacto,
-        tipoContacto,
-        valor
-      })
+      if (idContacto) {
+        const contacto = {
+          idContacto,
+          tipoContacto,
+          valor
+        }
 
-      res.json(Object.values(clientes))
+        currentCliente.contactos.push(contacto)
+      }
     })
+
+    res.json(clients)
   } catch (error) {
     return res.status(500).json({ message: 'Internal Server Error' })
   }
@@ -51,7 +64,7 @@ export const getClients = async (req, res) => {
 
 export const getClient = async (req, res) => {
   try {
-    const { idCliente } = req.params
+    const { id: idCliente } = req.params
 
     const query = `
       SELECT
@@ -63,7 +76,7 @@ export const getClient = async (req, res) => {
         c.valor
       FROM
         clientes cl
-        INNER JOIN contactosCliente c ON cl.idContacto = c.idContacto
+        INNER JOIN contactosCliente c ON cl.idCliente = c.idCliente
       WHERE
         cl.idCliente = ?
     `
@@ -72,8 +85,10 @@ export const getClient = async (req, res) => {
 
     const client = {
       idCliente: result[0].idCliente,
-      nombreCliente: result[0].nombreCliente,
-      apellidoCliente: result[0].apellidoCliente,
+      nombreCliente: formatName(
+        result[0].nombreCliente,
+        result[0].apellidoCliente
+      ),
       contactos: result.map(contacto => ({
         idContacto: contacto.idContacto,
         tipoContacto: contacto.tipoContacto,
@@ -94,23 +109,23 @@ export const createClient = async (req, res) => {
     let idCliente = ''
 
     try {
-      const queryCreateCliente = `
+      const queryInsertCliente = `
         INSERT INTO clientes (nombreCliente, apellidoCliente) VALUES (?, ?)
       `
 
-      const [result] = await pool.query(queryCreateCliente, [
+      const [resultCliente] = await pool.query(queryInsertCliente, [
         nombreCliente,
         apellidoCliente
       ])
 
-      idCliente = result.insertId
+      idCliente = resultCliente.insertId
     } catch (error) {
       return res.status(500).json({ message: 'Error al crear el cliente' })
     }
 
     try {
       const insertContactQuery =
-        'INSERT INTO contactosCliente (tipoContacto, valor, idCliente) VALUES (?, ?)'
+        'INSERT INTO contactosCliente (tipoContacto, valor, idCliente) VALUES ?'
 
       const contactoValues = contactos.map(contacto => [
         contacto.tipoContacto,
@@ -122,16 +137,19 @@ export const createClient = async (req, res) => {
     } catch (error) {
       return res.status(500).json({ message: 'Error al crear el contacto' })
     }
+
+    res.json({ message: 'Cliente creado exitosamente' })
   } catch (error) {
     return res.status(500).json({ message: 'Internal Server Error' })
   }
 }
 
 export const editClient = async (req, res) => {
-  try {
-    const { idCliente } = req.params
-    const { nombreCliente, apellidoCliente, contactos } = req.body
+  const { id: idCliente } = req.params
+  const { nombreCliente, apellidoCliente, contactos } = req.body
 
+  try {
+    // Actualizar el cliente
     const queryUpdateCliente = `
       UPDATE clientes
       SET nombreCliente = ?, apellidoCliente = ?
@@ -144,51 +162,25 @@ export const editClient = async (req, res) => {
       idCliente
     ])
 
-    const queryGetContactos = `
-      SELECT idContacto
-      FROM contactosCliente
+    // Eliminar los contactos existentes del cliente
+    const deleteContactosQuery = `
+      DELETE FROM contactosCliente
       WHERE idCliente = ?
     `
+    await pool.query(deleteContactosQuery, [idCliente])
 
-    const [existingContactos] = await pool.query(queryGetContactos, [idCliente])
-
-    const existingContactosSet = new Set(
-      existingContactos.map(({ idContacto }) => idContacto)
-    )
-
-    const contactosToDelete = existingContactosSet.filter(({ idContacto }) => {
-      return !contactos.some(contacto => contacto.idContacto === idContacto)
-    })
-
-    if (contactosToDelete.length > 0) {
-      const queryDeleteContactos = `
-        DELETE FROM contactosCliente
-        WHERE idContacto IN (${contactosToDelete
-          .map(({ idContacto }) => idContacto)
-          .join(',')})
-      `
-
-      console.log({ queryDeleteContactos })
-
-      await pool.query(queryDeleteContactos)
-    }
-
-    const queryUpsertContactos = `
-      INSERT INTO contactosCliente (tipoContacto, valor, idCliente)
-      VALUES (?, ?, ?)
-      ON DUPLICATE KEY UPDATE tipoContacto = VALUES(tipoContacto), valor = VALUES(valor)
+    // Insertar los nuevos contactos del cliente
+    const insertContactQuery = `
+      INSERT INTO contactosCliente (tipoContacto, valor, idCliente) VALUES ?
     `
 
-    const contactosValues = contactos.map(
-      ({ idContacto, tipoContacto, valor }) => [
-        idContacto,
-        tipoContacto,
-        valor,
-        idCliente
-      ]
-    )
+    const contactosValues = contactos.map(contacto => [
+      contacto.tipoContacto,
+      contacto.valor,
+      idCliente
+    ])
 
-    await pool.query(queryUpsertContactos, contactosValues)
+    await pool.query(insertContactQuery, [contactosValues])
 
     res.json({ message: 'Cliente actualizado exitosamente' })
   } catch (error) {
@@ -198,14 +190,7 @@ export const editClient = async (req, res) => {
 
 export const deleteClient = async (req, res) => {
   try {
-    const { idCliente } = req.params
-
-    const queryDeleteCliente = `
-      DELETE FROM clientes
-      WHERE idCliente = ?
-    `
-
-    await pool.query(queryDeleteCliente, [idCliente])
+    const { id: idCliente } = req.params
 
     const queryDeleteContactos = `
       DELETE FROM contactosCliente
@@ -213,6 +198,13 @@ export const deleteClient = async (req, res) => {
     `
 
     await pool.query(queryDeleteContactos, [idCliente])
+
+    const queryDeleteCliente = `
+      DELETE FROM clientes
+      WHERE idCliente = ?
+    `
+
+    await pool.query(queryDeleteCliente, [idCliente])
 
     res.json({ message: 'Cliente eliminado exitosamente' })
   } catch (error) {

@@ -3,40 +3,51 @@ import { pool } from '../db.js'
 export const getSuppliers = async (req, res) => {
   try {
     const query = `
-      SELECT
+      SELECT 
         p.idProveedor,
         p.nombreProveedor,
         c.idContacto,
         c.tipoContacto,
         c.valor
-      FROM
+      FROM 
         proveedores p
-        INNER JOIN contactosProveedor c ON p.idContacto = c.idContacto
+        LEFT JOIN contactosProveedor c ON p.idProveedor = c.idProveedor
+        ORDER BY p.idProveedor
     `
 
-    const [result] = await pool.query(query)
+    const [results] = await pool.query(query)
 
-    const proveedores = {}
-    result.forEach(row => {
-      const { idProveedor, nombreProveedor, idContacto, tipoContacto, valor } =
-        row
+    const suppliers = []
+    let currentSupplierId = null
+    let currentSupplier = null
 
-      if (!proveedores[idProveedor]) {
-        proveedores[idProveedor] = {
+    results.forEach(row => {
+      const { idProveedor, nombreProveedor, idContacto, tipoContacto, valor } = row
+
+      if (idProveedor !== currentSupplierId) {
+        currentSupplierId = idProveedor
+
+        currentSupplier = {
           idProveedor,
           nombreProveedor,
           contactos: []
         }
+
+        suppliers.push(currentSupplier)
       }
 
-      proveedores[idProveedor].contactos.push({
-        idContacto,
-        tipoContacto,
-        valor
-      })
+      if (idContacto) {
+        const contacto = {
+          idContacto,
+          tipoContacto,
+          valor
+        }
 
-      res.json(Object.values(proveedores))
+        currentSupplier.contactos.push(contacto)
+      }
     })
+
+    res.json(suppliers)
   } catch (error) {
     return res.status(500).json({ message: 'Internal Server Error' })
   }
@@ -44,7 +55,8 @@ export const getSuppliers = async (req, res) => {
 
 export const getSupplier = async (req, res) => {
   try {
-    const { idProveedor } = req.params
+    const { id: idProveedor } = req.params
+
     const query = `
       SELECT
         p.idProveedor,
@@ -54,7 +66,7 @@ export const getSupplier = async (req, res) => {
         c.valor
       FROM 
         proveedores p
-        INNER JOIN contactosProveedor c ON p.idContacto = c.idContacto
+        INNER JOIN contactosProveedor c on p.idProveedor = c.idProveedor
       WHERE 
         p.idProveedor = ?
     `
@@ -86,6 +98,7 @@ export const createSupplier = async (req, res) => {
     try {
       const queryInsertProveedor =
         'INSERT INTO proveedores (nombreProveedor) VALUES (?)'
+
       const [resultProveedor] = await pool.query(queryInsertProveedor, [
         nombreProveedor
       ])
@@ -97,7 +110,7 @@ export const createSupplier = async (req, res) => {
 
     try {
       const insertContactQuery =
-        'INSERT INTO contactosProveedor (tipoContacto, valor, idProveedor) VALUES (?, ?, ?)'
+        'INSERT INTO contactosProveedor (tipoContacto, valor, idProveedor) VALUES ?'
 
       const contactoValues = contactos.map(contacto => [
         contacto.tipoContacto,
@@ -105,7 +118,7 @@ export const createSupplier = async (req, res) => {
         idProveedor
       ])
 
-      await pool.query(insertContactQuery, contactoValues)
+      await pool.query(insertContactQuery, [contactoValues])
     } catch (error) {
       return res.status(500).json({ message: 'Error al crear el contacto' })
     }
@@ -117,71 +130,31 @@ export const createSupplier = async (req, res) => {
 }
 
 export const editSupplier = async (req, res) => {
+  const { id: idProveedor } = req.params
+  const { nombreProveedor, contactos } = req.body
+
   try {
-    const { idProveedor } = req.params
-    const { nombreProveedor, contactos } = req.body
+    // Actualizar el proveedor
+    const updateProveedorQuery =
+      'UPDATE proveedores SET nombreProveedor = ? WHERE idProveedor = ?'
+    await pool.query(updateProveedorQuery, [nombreProveedor, idProveedor])
 
-    // Actualizar proveedor
-    const queryUpdateProveedor = `
-      UPDATE proveedores
-      SET nombreProveedor = ?
-      WHERE idProveedor = ?
-    `
+    // Eliminar los contactos existentes del proveedor
+    const deleteContactosQuery =
+      'DELETE FROM contactosProveedor WHERE idProveedor = ?'
+    await pool.query(deleteContactosQuery, [idProveedor])
 
-    await pool.query(queryUpdateProveedor, [nombreProveedor, idProveedor])
+    // Insertar los nuevos contactos del proveedor
+    const insertContactosQuery =
+      'INSERT INTO contactosProveedor (tipoContacto, valor, idProveedor) VALUES ?'
 
-    // Obtener los contactos existentes del proveedor
-    const queryGetContactos = `
-      SELECT idContacto
-      FROM contactosProveedor 
-      WHERE idProveedor = ?
-    `
-
-    const [existingContactos] = await pool.query(queryGetContactos, [
+    const contactoValues = contactos.map(contacto => [
+      contacto.tipoContacto,
+      contacto.valor,
       idProveedor
     ])
 
-    // Conjunto de los IDs de los contactos existentes
-    const existingContactosSet = new Set(
-      existingContactos.map(({ idContacto }) => idContacto)
-    )
-
-    // Obtener los IDs de los contactos a eliminar
-    const contactosToDelete = existingContactosSet.filter(({ idContacto }) => {
-      return !contactos.some(contacto => contacto.idContacto === idContacto)
-    })
-
-    // Eliminar los contactos que ya no están en la lista de contactos actualizada
-    if (contactosToDelete.length > 0) {
-      const queryDeleteContactos = `
-        DELETE FROM contactosProveedor 
-        WHERE idContacto  IN (${contactosToDelete
-          .map(({ idContacto }) => idContacto)
-          .join(', ')})
-      `
-
-      console.log({ queryDeleteContactos })
-
-      await pool.query(queryDeleteContactos)
-    }
-
-    // Insertar o actualizar los contactos
-    const queryUpsertContactos = `
-      INSERT INTO contactosProveedor (idContacto, tipoContacto, valor, idProveedor)
-      VALUES (?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE tipoContacto = VALUES(tipoContacto), valor = VALUES(valor)
-    `
-
-    const contactosValues = contactos.map(
-      ({ idContacto, tipoContacto, valor }) => [
-        idContacto,
-        tipoContacto,
-        valor,
-        idProveedor
-      ]
-    )
-
-    await pool.query(queryUpsertContactos, contactosValues)
+    await pool.query(insertContactosQuery, [contactoValues])
 
     res.json({ message: 'Proveedor actualizado correctamente' })
   } catch (error) {
@@ -191,14 +164,7 @@ export const editSupplier = async (req, res) => {
 
 export const deleteSupplier = async (req, res) => {
   try {
-    const { idProveedor } = req.params
-
-    const queryDeleteProveedor = `
-      DELETE FROM proveedores
-      WHERE idProveedor = ?
-    `
-
-    await pool.query(queryDeleteProveedor, [idProveedor])
+    const { id: idProveedor } = req.params
 
     // Eliminar contactos asociados al proveedor
     const queryDeleteContactos = `
@@ -207,6 +173,13 @@ export const deleteSupplier = async (req, res) => {
     `
 
     await pool.query(queryDeleteContactos, [idProveedor])
+
+    const queryDeleteProveedor = `
+      DELETE FROM proveedores
+      WHERE idProveedor = ?
+    `
+
+    await pool.query(queryDeleteProveedor, [idProveedor])
 
     res.json({ message: 'Proveedor eliminado correctamente' })
   } catch (error) {

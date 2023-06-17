@@ -2,7 +2,9 @@ import { pool } from '../db.js'
 
 export const getProducts = async (rq, res) => {
   try {
-    const [result] = await pool.query('SELECT * FROM productos')
+    const query =
+      'SELECT p.*, tp.descripcion AS tipoProducto FROM productos p LEFT JOIN tipo_productos tp ON p.IDProducto = tp.IDProducto'
+    const [result] = await pool.query(query)
 
     res.json(result)
   } catch (error) {
@@ -15,7 +17,7 @@ export const getProduct = async (req, res) => {
     const { id } = req.params
 
     const [result] = await pool.query(
-      'SELECT * FROM productos WHERE idProducto = ?',
+      'SELECT p.*, tp.descripcion AS tipoProducto FROM productos p LEFT JOIN tipo_productos tp ON p.IDProducto = tp.IDProducto WHERE p.IDProducto = ?',
       [id]
     )
 
@@ -31,30 +33,40 @@ export const getProduct = async (req, res) => {
 
 export const createProduct = async (req, res) => {
   try {
-    const { NombreProducto, Precio, CantidadInventario, UnidadMedida } =
-      req.body
+    const {
+      nombreProducto,
+      precio,
+      cantidadInventario,
+      unidadMedida,
+      tipoProducto
+    } = req.body
 
     // Crear producto
-    const queryInsertProducto =
-      'INSERT INTO productos (NombreProducto, Precio, CantidadInventario, UnidadMedida) VALUES (?, ?, ?, ?)'
+    const queryInsertProducto = `
+      INSERT INTO productos (
+        nombreProducto, 
+        precio, 
+        cantidadInventario, 
+        unidadMedida 
+      ) VALUES (?, ?, ?, ?)
+    `
+
     const [resultProducto] = await pool.query(queryInsertProducto, [
-      NombreProducto,
-      Precio,
-      CantidadInventario,
-      UnidadMedida
+      nombreProducto,
+      precio,
+      cantidadInventario,
+      unidadMedida
     ])
 
     const idProducto = resultProducto.insertId
 
+    // Insertar tipo de producto
+    const queryInsertTipoProducto =
+      'INSERT INTO tipo_productos (descripcion, IDProducto) VALUES (?, ?)'
+    await pool.query(queryInsertTipoProducto, [tipoProducto, idProducto])
+
     res.json({
-      message: 'Producto creado exitosamente',
-      producto: {
-        idProducto,
-        NombreProducto,
-        Precio,
-        CantidadInventario,
-        UnidadMedida
-      }
+      message: 'Producto creado exitosamente'
     })
   } catch (error) {
     res.status(500).json({ message: 'Internal Server Error' })
@@ -64,17 +76,21 @@ export const createProduct = async (req, res) => {
 export const editProduct = async (req, res) => {
   try {
     const { id } = req.params
-    const { NombreProducto, Precio, CantidadInventario, UnidadMedida } =
-      req.body
+    const {
+      nombreProducto,
+      precio,
+      cantidadInventario,
+      unidadMedida
+    } = req.body
 
     // Actualizar producto
     const queryUpdateProducto =
-      'UPDATE productos SET NombreProducto = ?, Precio = ?, CantidadInventario = ?, UnidadMedida = ? WHERE idProducto = ?'
+      'UPDATE productos SET nombreProducto = ?, precio = ?, cantidadInventario = ?, unidadMedida = ? WHERE IDProducto = ?'
     const [resultUpdateProducto] = await pool.query(queryUpdateProducto, [
-      NombreProducto,
-      Precio,
-      CantidadInventario,
-      UnidadMedida,
+      nombreProducto,
+      precio,
+      cantidadInventario,
+      unidadMedida,
       id
     ])
 
@@ -83,14 +99,7 @@ export const editProduct = async (req, res) => {
     }
 
     res.json({
-      message: 'Producto actualizado exitosamente',
-      producto: {
-        idProducto: id,
-        NombreProducto,
-        Precio,
-        CantidadInventario,
-        UnidadMedida
-      }
+      message: 'Producto actualizado exitosamente'
     })
   } catch (error) {
     return res.status(500).json({ message: 'Internal Server Error' })
@@ -102,7 +111,7 @@ export const deleteProduct = async (req, res) => {
     const { id } = req.params
 
     // Eliminar producto
-    const queryDeleteProducto = 'DELETE FROM productos WHERE idProducto = ?'
+    const queryDeleteProducto = 'DELETE FROM productos WHERE IDProducto = ?'
     const [resultDeleteProducto] = await pool.query(queryDeleteProducto, [id])
 
     if (resultDeleteProducto.affectedRows === 0) {

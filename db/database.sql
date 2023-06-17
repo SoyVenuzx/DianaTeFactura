@@ -32,7 +32,7 @@ CREATE TABLE contactosCliente (
 	tipoContacto VARCHAR(50) NOT NULL,
 	valor VARCHAR(100) NOT NULL,
 	idCliente INT,
-	FOREIGN KEY (idCliente) REFERENCES clientes(idCliente)
+	-- FOREIGN KEY (idCliente) REFERENCES clientes(idCliente)
 )
 
 -- Clientes
@@ -40,7 +40,7 @@ CREATE TABLE clientes (
 	idCliente int PRIMARY KEY AUTO_INCREMENT,
 	nombreCliente varchar(50) NOT NULL,
 	apellidoCliente varchar(50) NOT NULL,
-	FOREIGN KEY (idContacto) REFERENCES contactos(idContacto)
+	-- FOREIGN KEY (idContacto) REFERENCES contactos(idContacto)
 );
 
 -- Ventas
@@ -65,7 +65,7 @@ CREATE TABLE tipo_ventas (
 CREATE TABLE proveedores (
 	idProveedor int PRIMARY KEY AUTO_INCREMENT,
 	nombreProveedor varchar(50) NOT NULL,
-	FOREIGN KEY (idContacto) REFERENCES contactos(idContacto)
+	-- FOREIGN KEY (idContacto) REFERENCES contactos(idContacto)
 );
 
 -- Mapeo contactos
